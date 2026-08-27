@@ -4,12 +4,42 @@ app_publisher = "suvankar"
 app_description = "srfoods custom app"
 app_email = "suvankar.bbm143@gmail.com"
 app_license = "mit"
+# Permission Query Hook
+permission_query_conditions = {
+    "Job Card": "srfoods_custom.custom_job_card.get_job_card_permission_query_conditions",
+}
+
+# DocType Event Hook
+doc_events = {
+    "Job Card": {
+        "validate": "srfoods_custom.custom_job_card.validate_job_card"
+    }
+}
 
 # Apps
 # ------------------
+# Permission Query Hook
+permission_query_conditions = {
+    "Job Card": "srfoods_custom.custom_job_card.get_job_card_permission_query_conditions",
+}
 
+# DocType Event Hooks 
+# DocType Event Hooks 
+doc_events = {
+    "ToDo": {
+        "on_update": "srfoods_custom.custom_job_card.auto_assign_employee_to_job_card"
+    },
+    "Job Card": {
+        "validate": "srfoods_custom.custom_job_card.validate_job_card"
+    },
+    "Stock Entry": {
+        "on_submit": "srfoods_custom.custom_work_order.validate_stock_entry_qc_submission"
+    }
+}
 # required_apps = []
-
+override_whitelisted_methods = {
+    "erpnext.manufacturing.doctype.work_order.work_order.make_stock_entry": "srfoods_custom.custom_work_order.custom_make_stock_entry"
+}
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
 # 	{
@@ -44,7 +74,8 @@ app_license = "mit"
 
 # include js in doctype views
 doctype_js = {
-    "Work Order": "public/js/sr_work_order_qc.js"
+    "Work Order": "public/js/sr_work_order_qc.js",
+    "Stock Entry": "public/js/stock_entry.js"
 }
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}

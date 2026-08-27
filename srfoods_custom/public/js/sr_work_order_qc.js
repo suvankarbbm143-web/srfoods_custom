@@ -1,111 +1,90 @@
 frappe.ui.form.on('Work Order', {
     refresh: function(frm) {
-        if (frm.doc.docstatus > 0 || frm.doc.status === 'Completed' || frm.doc.status === 'In Process') {
+        if (!frm.is_new()) {
+
+            // Finish বাটনে ক্লিক করলে Stock Entry ওপেন হবে
+            if (frm.doc.docstatus === 1 && frm.doc.status !== 'Completed' && flt(frm.doc.material_transferred_for_manufacturing) > 0) {
+                frm.page.set_primary_action(__('Finish'), function() {
+                    frappe.model.open_mapped_doc({
+                        method: "srfoods_custom.custom_work_order.custom_make_stock_entry",
+                        frm: frm,
+                        args: {
+                            purpose: "Manufacture",
+                            qty: flt(frm.doc.qty) - flt(frm.doc.produced_qty)
+                        }
+                    });
+                });
+            }
+
+            // QC Details Button
             frm.add_custom_button(__('QC Details'), function() {
-                
-                // ১. Quality Inspection খোঁজা
                 frappe.call({
-                    method: 'frappe.client.get_list',
-                    args: {
-                        doctype: 'Quality Inspection',
-                        fields: ['name', 'inspection_type', 'reference_name', 'status', 'docstatus'],
-                        filters: { reference_name: frm.doc.name },
-                        limit_page_length: 20
-                    },
+                    method: "srfoods_custom.api.get_qc_details",
+                    args: { work_order: frm.doc.name },
                     callback: function(r) {
-                        let qc_list = r.message || [];
-                        
-                        // ২. Stock Entry খোঁজা
-                        frappe.call({
-                            method: 'frappe.client.get_list',
-                            args: {
-                                doctype: 'Stock Entry',
-                                fields: ['name', 'docstatus'],
-                                filters: { work_order: frm.doc.name },
-                                limit_page_length: 5
-                            },
-                            callback: function(s) {
-                                let stock_entries = s.message || [];
-                                let stock_name = stock_entries.length > 0 ? stock_entries[stock_entries.length - 1].name : '-';
-                                let rows_html = '';
+                        let records = r.message || [];
+                        if (!records.length) {
+                            frappe.msgprint(__('No QC details found.'));
+                            return;
+                        }
+                        let row = records[0];
+                        let badge_class = row.status === "Submitted" ? "green" : "orange";
+                        let prod_qa = (row.product_inspection && row.product_inspection !== '-') 
+                            ? `<a href="/app/quality-inspection/${row.product_inspection}" target="_blank">${row.product_inspection}</a>` : '-';
+                        let app_qa = (row.application_inspection && row.application_inspection !== '-') 
+                            ? `<a href="/app/quality-inspection/${row.application_inspection}" target="_blank">${row.application_inspection}</a>` : '-';
+                        let se_link = `<a href="/app/stock-entry/${row.stock_entry}" target="_blank">${row.stock_entry}</a>`;
 
-                                if (qc_list.length > 0) {
-                                    qc_list.forEach((qc, index) => {
-                                        let status_badge = '';
-                                        if (qc.docstatus === 1) {
-                                            status_badge = '<span style="color: #28a745; font-weight: 500;">● Submitted</span>';
-                                        } else if (qc.docstatus === 0) {
-                                            status_badge = '<span style="color: #fd7e14; font-weight: 500;">● Draft</span>';
-                                        } else {
-                                            status_badge = '<span style="color: #dc3545; font-weight: 500;">● Cancelled</span>';
-                                        }
-
-                                        rows_html += `
-                                            <tr>
-                                                <td style="color: #6c757d;">${index + 1}</td>
-                                                <td><a href="/app/quality-inspection/${qc.name}" target="_blank">${qc.name}</a></td>
-                                                <td>${qc.name}</td>
-                                                <td>-</td>
-                                                <td>${stock_name !== '-' ? `<a href="/app/stock-entry/${stock_name}" target="_blank">${stock_name}</a>` : '-'}</td>
-                                                <td>${status_badge}</td>
+                        let d = new frappe.ui.Dialog({
+                            title: __('QC Details'),
+                            size: 'large',
+                            fields: [{
+                                fieldtype: 'HTML',
+                                fieldname: 'qc_table_html',
+                                options: `
+                                    <p>Work Order: <b>${frm.doc.name}</b></p>
+                                    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                                        <thead>
+                                            <tr style="background:#fafbfc; border-bottom:2px solid #d1d8dd; text-align:left;">
+                                                <th style="padding:8px;">#</th>
+                                                <th style="padding:8px;">Product Inspection</th>
+                                                <th style="padding:8px;">Application Inspection</th>
+                                                <th style="padding:8px;">Stock Entry</th>
+                                                <th style="padding:8px;">Status</th>
                                             </tr>
-                                        `;
-                                    });
-                                } else {
-                                    // QC তৈরি না হলে সঠিক Pending / Not Started স্ট্যাটাস দেখাবে
-                                    rows_html = `
-                                        <tr>
-                                            <td style="color: #6c757d;">1</td>
-                                            <td>-</td>
-                                            <td>-</td>
-                                            <td>-</td>
-                                            <td>${stock_name !== '-' ? `<a href="/app/stock-entry/${stock_name}" target="_blank">${stock_name}</a>` : '-'}</td>
-                                            <td><span style="color: #6c757d; font-weight: 500;">● Not Created</span></td>
-                                        </tr>
-                                    `;
-                                }
-
-                                let html_content = `
-                                    <div style="font-size: 13px; color: #495057; margin-bottom: 12px;">
-                                        Work Order: <strong>${frm.doc.name}</strong>
-                                    </div>
-                                    <div style="border: 1px solid #ebedf2; border-radius: 6px; overflow: hidden;">
-                                        <table class="table table-bordered" style="margin-bottom: 0; font-size: 13px;">
-                                            <thead style="background-color: #f8f9fa;">
-                                                <tr style="color: #6c757d; font-weight: 500;">
-                                                    <th style="width: 40px;">#</th>
-                                                    <th>Quality Inspection</th>
-                                                    <th>Product Inspection</th>
-                                                    <th>Application Inspection</th>
-                                                    <th>Stock Entry</th>
-                                                    <th>Status</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                ${rows_html}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                `;
-
-                                let d = new frappe.ui.Dialog({
-                                    title: __('QC Details'),
-                                    size: 'large',
-                                    fields: [
-                                        {
-                                            fieldname: 'qc_html',
-                                            fieldtype: 'HTML',
-                                            options: html_content
-                                        }
-                                    ]
-                                });
-
-                                d.show();
-                            }
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td style="padding:8px;">1</td>
+                                                <td style="padding:8px;">${prod_qa}</td>
+                                                <td style="padding:8px;">${app_qa}</td>
+                                                <td style="padding:8px;">${se_link}</td>
+                                                <td style="padding:8px;"><span class="indicator-pill ${badge_class}">${row.status}</span></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                `
+                            }]
                         });
+                        d.show();
                     }
                 });
             });
+
+            // Material Consumption Button
+            if (frm.doc.docstatus === 1 && frm.doc.status !== 'Completed') {
+                frm.add_custom_button(__('Material Consumption'), function() {
+                    frappe.call({
+                        method: "srfoods_custom.custom_work_order.make_material_consumption_entry",
+                        args: { work_order_id: frm.doc.name },
+                        callback: function(res) {
+                            if (res.message) {
+                                frappe.set_route('Form', 'Stock Entry', res.message.name || res.message);
+                            }
+                        }
+                    });
+                });
+            }
         }
     }
 });
